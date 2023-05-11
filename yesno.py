@@ -1,3 +1,4 @@
+
 import numpy as np
 import cupy as cp
 import matplotlib.pyplot as plt
@@ -5,17 +6,6 @@ import pyaudio
 from time import sleep
 from scipy.signal import find_peaks
 
-# Define the Morse code dictionary
-MORSE_CODE = {
-    '.-': 'A', '-...': 'B', '-.-.': 'C', '-..': 'D', '.': 'E',
-    '..-.': 'F', '--.': 'G', '....': 'H', '..': 'I', '.---': 'J',
-    '-.-': 'K', '.-..': 'L', '--': 'M', '-.': 'N', '---': 'O',
-    '.--.': 'P', '--.-': 'Q', '.-.': 'R', '...': 'S', '-': 'T',
-    '..-': 'U', '...-': 'V', '.--': 'W', '-..-': 'X', '-.--': 'Y',
-    '--..': 'Z', '.----': '1', '..---': '2', '...--': '3', '....-': '4',
-    '.....': '5', '-....': '6', '--...': '7', '---..': '8', '----.': '9',
-    '-----': '0'
-}
 
 def gpu_stft(x, fs, window, nperseg, noverlap):
     step = nperseg - noverlap
@@ -48,18 +38,10 @@ fig, ax = plt.subplots()
 
 # Record and process audio in chunks
 frames = []
-last_bite = 0
-state = "WAITING"
 spike_count = 0
-no_spike_count = 0
-morse_code = ""
-current_char = ""
-decoded_message = ""  # Add this line to store the decoded message
-tolerance = 3
-tolerance_count = 0
+decoded_message = ""
 
 for i in range(MAX_FRAMES):
-    # ... (the rest of the loop remains the same)
     data = cp.asarray(np.frombuffer(stream.read(CHUNK), dtype=np.float32))
     frames.append(data)
 
@@ -72,15 +54,14 @@ for i in range(MAX_FRAMES):
 
     # Find peaks in the STFT magnitude
     peaks, _ = find_peaks(cp.asnumpy(cp.abs(Zxx[:, -1])), height=2)
-    
 
     # Count the number of peaks above the threshold
     num_peaks = len(peaks)
 
     # Plot the STFT with peaks highlighted
     ax.pcolormesh(cp.asnumpy(t[-N_FRAMES_PLOT:]), cp.asnumpy(f), cp.asnumpy(cp.abs(Zxx[:, -N_FRAMES_PLOT:])), shading='gouraud')
-    ax.plot(peaks,[1000]*len(peaks),"w.")
-    ax.set_xlim(t[max(0,len(t)-N_FRAMES_PLOT)],t[-1])
+    ax.plot(peaks, [1000] * len(peaks), "w.")
+    ax.set_xlim(t[max(0, len(t) - N_FRAMES_PLOT)], t[-1])
     ax.set_ylim(0, 5000)
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Frequency [Hz]')
@@ -89,54 +70,17 @@ for i in range(MAX_FRAMES):
 
     # Sleep to simulate a live feed
     sleep(CHUNK / RATE)
-    dot = []
-    # Highlight the peaks on the plot
-    
+
     if num_peaks >= 4:
         s = "SPIKE"
+        spike_count += 1
     else:
-    	s = "NO SPIKE"
-    
-    print(num_peaks, s)
-    # Update state machine and decode Morse code
-    if state == "WAITING":
-        if s == "SPIKE":
-            spike_count += 1
-            no_spike_count = 0
-            state = "SPIKE"
-    elif state == "SPIKE":
-        if s == "SPIKE":
-            spike_count += 1
-            tolerance_count = 0  # Reset tolerance count when a SPIKE is detected
-        else:
-            tolerance_count += 1  # Increment tolerance count when a NO SPIKE is detected
-            if tolerance_count > tolerance:  # Only change state if NO SPIKE count exceeds tolerance
-                no_spike_count += tolerance_count
-                if 3 <= spike_count <= 10:
-                    current_char += "."
-                elif 11 < spike_count <= 17:
-                    current_char += "-"
-                spike_count = 0
-                tolerance_count = 0  # Reset tolerance count
-                state = "NO_SPIKE"
-    elif state == "NO_SPIKE":
-        if s == "SPIKE":
-            spike_count += 1
-            no_spike_count = 0
-            state = "SPIKE"
-        else:
-            no_spike_count += 1
-            if no_spike_count >= 20 and current_char:
-                morse_code += current_char
-                decoded_char = MORSE_CODE.get(current_char, "?")
-                decoded_message += decoded_char
-                print(f"Decoded character: {decoded_char} ({current_char})")
-                current_char = ""
+        s = "NO SPIKE"
+        spike_count = 0
+
+    if spike_count > 3:
+        decoded_message = "YES"
+        break
 
 # Close the stream and PyAudio
-stream.stop_stream()
-stream.close()
-audio.terminate()
-
-# Print the final decoded message
-print(f"Decoded message: {decoded_message}")
+stream.stop
